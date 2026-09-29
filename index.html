@@ -1,40 +1,142 @@
-  if(t.dataset.r){const r={...(m.reacts||{})};if(r[me.id]===t.dataset.r)delete r[me.id];else r[me.id]=t.dataset.r;await col.doc(id).update({reacts:r});sel=null}
-  else if(t.dataset.a==='reply'){replyTo=m;$('rep').style.display='block';$('rep').textContent='Replying to '+m.name+': '+m.text.slice(0,40);sel=null;$('in').focus()}
-  else if(t.dataset.a==='del'){await col.doc(id).delete();sel=null}
-  else if(t.classList.contains('b')){sel=sel===id?null:id}
-  }catch(err){console.error(err)}
-  render();
-};
-async function send(){
-  const v=$('in').value.trim();if(!v)return;
-  $('in').value='';
-  const d={t:Date.now(),uid:me.id,name:me.name,text:v,reacts:{}};
-  if(replyTo)d.reply=replyTo.name+': '+replyTo.text.slice(0,60);
-  replyTo=null;$('rep').style.display='none';
-  try{await col.add(d)}catch(e){alert('Could not send: '+(e.code||e.message))}
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Friends Chat</title>
+<style>
+:root{--bg:#fff;--fg:#111;--mut:#8e8e93;--oth:#efefef;--line:#e6e6e6;--grad:linear-gradient(135deg,#833ab4,#fd1d1d 60%,#fcb045)}
+@media(prefers-color-scheme:dark){:root{--bg:#000;--fg:#f5f5f5;--mut:#8a8a8f;--oth:#262626;--line:#262626}}
+*{box-sizing:border-box}html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font:15px/1.35 -apple-system,system-ui,Segoe UI,Roboto,sans-serif;display:flex;flex-direction:column;max-width:720px;margin:auto}
+header{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line)}
+.av{width:38px;height:38px;border-radius:50%;background:var(--grad);color:#fff;display:grid;place-items:center;font-weight:700;flex:none}
+header b{display:block}header small{color:var(--mut)}
+.ic{background:none;border:0;font-size:20px;cursor:pointer;color:var(--fg);padding:4px}
+#list{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:4px}
+.row{display:flex;flex-direction:column;max-width:78%;align-self:flex-start}
+.row.me{align-self:flex-end;align-items:flex-end}
+.nm{font-size:11px;color:var(--mut);margin:6px 10px 2px}
+.b{padding:9px 14px;border-radius:22px;background:var(--oth);word-break:break-word;cursor:pointer}
+.me .b{background:var(--grad);color:#fff}
+.b img{max-width:220px;max-height:280px;border-radius:14px;display:block}
+.rp{font-size:12px;color:var(--mut);border-left:2px solid var(--mut);padding-left:6px;margin:0 8px 3px}
+.rx{margin:-7px 10px 0;font-size:13px;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:0 6px}
+.menu{display:flex;gap:4px;margin:4px;font-size:20px;flex-wrap:wrap;align-items:center}
+.menu span{cursor:pointer;padding:2px 4px}.menu .t{font-size:12px;color:var(--mut)}
+.time{font-size:10px;color:var(--mut);margin:2px 10px}
+#bar{border-top:1px solid var(--line);padding:8px 10px calc(8px + env(safe-area-inset-bottom))}
+#rep{font-size:12px;color:var(--mut);display:none;padding:0 6px 6px}
+#f{display:flex;gap:6px;align-items:center}
+#in{flex:1;border:1px solid var(--line);background:transparent;color:var(--fg);border-radius:24px;padding:10px 16px;font:inherit;outline:none}
+#sd{border:0;background:none;color:#0095f6;font:600 15px inherit;cursor:pointer}
+#emo{display:none;gap:6px;flex-wrap:wrap;padding:6px;font-size:24px}#emo span{cursor:pointer}
+#typing{font-size:12px;color:var(--mut);height:16px;padding:0 14px}
+.card{margin:auto;text-align:center;padding:24px;width:min(340px,90%)}
+.card h2{margin:0 0 4px}.card p{color:var(--mut);font-size:13px}
+.card input{width:100%;margin:8px 0;padding:12px;border-radius:12px;border:1px solid var(--line);background:transparent;color:var(--fg);font:inherit}
+.card button{width:100%;padding:12px;border:0;border-radius:12px;background:var(--grad);color:#fff;font:600 15px inherit;cursor:pointer}
+.demo{background:#fff3cd;color:#664d03;font-size:12px;padding:6px 12px;text-align:center}
+</style></head><body>
+<div id="demo" class="demo" style="display:none">Demo mode: works only across tabs on this device. Add Firebase config (see top of script) so friends can join.</div>
+<header><div class="av" id="rav">#</div><div><b id="rn">Room</b><small id="on"></small></div>
+<button class="ic" style="margin-left:auto" id="inv" title="Copy invite link">🔗</button></header>
+<div id="list"></div><div id="typing"></div>
+<div id="bar" style="display:none"><div id="rep"></div><div id="emo"></div>
+<div id="f"><button class="ic" id="eb">😊</button><button class="ic" id="pb">📷</button>
+<input type="file" id="fi" accept="image/*" hidden>
+<input id="in" placeholder="Message…" autocomplete="off"><button id="sd">Send</button></div></div>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script>
+// ===== PASTE YOUR FIREBASE CONFIG HERE (leave null for demo mode) =====
+const FIREBASE_CONFIG = null;
+/* Example:
+const FIREBASE_CONFIG = {apiKey:"...",authDomain:"...",projectId:"...",appId:"..."};
+*/
+// =====================================================================
+const $=id=>document.getElementById(id);
+const ls={g(k){try{return localStorage.getItem(k)}catch(e){return null}},s(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
+const me={id:ls.g('uid')||'u'+Math.random().toString(36).slice(2,10),name:ls.g('nm')||''};ls.s('uid',me.id);
+const room=(location.hash.slice(1)||'general').toLowerCase().replace(/[^a-z0-9_-]/g,'');
+$('rn').textContent='# '+room;$('rav').textContent=room[0].toUpperCase();
+let msgs=[],sel=null,replyTo=null,B;
+const R=['❤️','😂','😮','😢','👍','🔥'];
+const esc=s=>{const d=document.createElement('div');d.textContent=s;return d.innerHTML};
+
+// ---- backends ----
+function firebaseBackend(){
+  firebase.initializeApp(FIREBASE_CONFIG);const db=firebase.firestore();
+  const col=db.collection('rooms').doc(room).collection('messages');
+  return{
+    add:m=>col.add(m),upd:(id,p)=>col.doc(id).update(p),del:id=>col.doc(id).delete(),
+    listen:cb=>col.orderBy('t','desc').limit(200).onSnapshot(s=>cb(s.docs.map(d=>({id:d.id,...d.data()})).reverse())),
+    typing:()=>{},onTyping:()=>{}}
 }
-$('sd').onclick=send;$('in').onkeydown=e=>{if(e.key==='Enter')send()};
+function demoBackend(){
+  $('demo').style.display='block';
+  const key='chat_'+room,bc=new BroadcastChannel(key);
+  const load=()=>{try{return JSON.parse(ls.g(key)||'[]')}catch(e){return[]}};
+  let cb;const save=a=>{ls.s(key,JSON.stringify(a.slice(-200)));bc.postMessage(1);cb(a)};
+  bc.onmessage=e=>{if(e.data===1)cb(load());else if(tcb)tcb(e.data)};let tcb;
+  return{
+    add:async m=>{const a=load();a.push({...m,id:'m'+Date.now()+Math.random()});save(a)},
+    upd:async(id,p)=>{const a=load();const m=a.find(x=>x.id===id);if(m)Object.assign(m,p);save(a)},
+    del:async id=>save(load().filter(x=>x.id!==id)),
+    listen:f=>{cb=f;f(load())},typing:()=>bc.postMessage({typing:me.name}),onTyping:f=>tcb=f}
+}
+// ---- UI ----
+function render(){
+  const l=$('list'),end=l.scrollHeight-l.scrollTop-l.clientHeight<100;
+  let last='';
+  l.innerHTML=msgs.map(m=>{
+    const mine=m.uid===me.id,rx=Object.values(m.reacts||{});
+    const head=(!mine&&last!==m.uid)?`<div class="nm">${esc(m.name||'?')}</div>`:'';last=m.uid;
+    const body=m.img?`<img src="${m.img}">`:esc(m.text);
+    const tm=m.t?new Date(m.t).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'';
+    return`<div class="row ${mine?'me':''}">${head}${m.reply?`<div class="rp">↪ ${esc(m.reply)}</div>`:''}
+    <div class="b" data-id="${m.id}">${body}</div>
+    ${rx.length?`<div class="rx">${[...new Set(rx)].join('')}${rx.length>1?' '+rx.length:''}</div>`:''}
+    ${sel===m.id?`<div class="menu">${R.map(e=>`<span data-r="${e}" data-id="${m.id}">${e}</span>`).join('')}<span class="t" data-a="reply" data-id="${m.id}">Reply</span>${mine?`<span class="t" data-a="del" data-id="${m.id}">Unsend</span>`:''}</div><div class="time">${tm}</div>`:''}</div>`}).join('')
+    ||'<div class="card"><h2>No messages yet</h2><p>Say hi 👋</p></div>';
+  if(end)l.scrollTop=l.scrollHeight;
+  const people=new Set(msgs.map(m=>m.uid)).size;$('on').textContent=people?people+' chatting':'new room';
+}
+$('list').onclick=async e=>{
+  const t=e.target,id=t.dataset.id,m=msgs.find(x=>x.id===id);
+  if(t.tagName==='IMG'){sel=t.parentElement.dataset.id;return render()}
+  if(!id)return;
+  try{
+    if(t.dataset.r){const r={...(m.reacts||{})};r[me.id]===t.dataset.r?delete r[me.id]:r[me.id]=t.dataset.r;sel=null;await B.upd(id,{reacts:r})}
+    else if(t.dataset.a==='reply'){replyTo=m;$('rep').style.display='block';$('rep').textContent='Replying to '+m.name+': '+(m.img?'📷 Photo':m.text.slice(0,40));sel=null;$('in').focus()}
+    else if(t.dataset.a==='del'){sel=null;await B.del(id)}
+    else if(t.classList.contains('b'))sel=sel===id?null:id;
+  }catch(err){console.error(err)}render();
+};
+async function send(extra){
+  const v=$('in').value.trim();if(!v&&!extra)return;
+  const d={t:Date.now(),uid:me.id,name:me.name,text:extra?'':v,reacts:{},...(extra||{})};
+  if(replyTo)d.reply=replyTo.name+': '+(replyTo.img?'📷 Photo':replyTo.text.slice(0,60));
+  $('in').value='';replyTo=null;$('rep').style.display='none';
+  try{await B.add(d)}catch(e){alert('Could not send: '+e.message)}
+}
+$('sd').onclick=()=>send();$('in').onkeydown=e=>{if(e.key==='Enter')send()};
+let tt=0;$('in').oninput=()=>{if(Date.now()-tt>2000){tt=Date.now();B.typing()}};
 $('emo').innerHTML=['😀','😂','🥹','😍','😎','🤔','😭','🙏','👍','🔥','🎉','💯','❤️','✨','👀','🥳'].map(e=>`<span>${e}</span>`).join('');
 $('emo').onclick=e=>{if(e.target.tagName==='SPAN'){$('in').value+=e.target.textContent;$('in').focus()}};
 $('eb').onclick=()=>{const s=$('emo').style;s.display=s.display==='flex'?'none':'flex'};
+$('pb').onclick=()=>$('fi').click();
+$('fi').onchange=e=>{const f=e.target.files[0];if(!f)return;const im=new Image();
+  im.onload=()=>{const k=Math.min(1,640/Math.max(im.width,im.height)),c=document.createElement('canvas');
+    c.width=im.width*k;c.height=im.height*k;c.getContext('2d').drawImage(im,0,0,c.width,c.height);send({img:c.toDataURL('image/jpeg',.65)})};
+  im.src=URL.createObjectURL(f);e.target.value=''};
+$('inv').onclick=async()=>{try{await navigator.clipboard.writeText(location.href);$('on').textContent='invite link copied'}catch(e){prompt('Copy link:',location.href)}};
+let tmo;function typingShow(n){if(n===me.name)return;$('typing').textContent=n+' is typing…';clearTimeout(tmo);tmo=setTimeout(()=>$('typing').textContent='',2500)}
 function start(){
   $('bar').style.display='block';
-  col.orderBy('t','desc').limit(200).onSnapshot(s=>{
-    const docs=s.docs||[];
-    msgs=docs.map(d=>({id:d.id,...(typeof d.data==='function'?d.data():d.data)})).reverse();
-    render();$('list').scrollTop=$('list').scrollHeight;
-  },e=>{$('on').textContent='disconnected ('+e.code+')'});
-  $('on').textContent='live';
+  B=FIREBASE_CONFIG?firebaseBackend():demoBackend();
+  B.listen(a=>{msgs=a;render()});B.onTyping(d=>d&&d.typing&&typingShow(d.typing));
 }
-function gate(){
-  $('gate').innerHTML='<b style="color:var(--fg);font-size:18px">Pick a nickname</b><input id="n" maxlength="20" placeholder="Your name"><button id="go">Join chat</button>';
-  $('go').onclick=()=>{const v=$('n').value.trim();if(!v)return;me.name=v;store.set('nm',v);start()};
+if(me.name)start();else{
+  $('list').innerHTML='<div class="card"><h2>Join #'+room+'</h2><p>Pick a nickname</p><input id="n" maxlength="20" placeholder="Your name"><button id="go">Join chat</button></div>';
+  $('go').onclick=()=>{const v=$('n').value.trim();if(!v)return;me.name=v;ls.s('nm',v);start()};
 }
-(async()=>{
-  try{db=await claude.use('db')}catch(e){db=null}
-  if(!db){$('on').textContent='offline';$('gate').textContent='Open this page in claude.ai (signed in, with Contributor access) to chat live.';return}
-  col=db.collection('messages');
-  me.name?start():gate();
-  try{const room=await claude.use('room');if(room){room.presence({name:me.name||'guest'});room.onPeers(p=>{const n=Object.keys(p||{}).length;if(n)$('on').textContent=n+' online'})}}catch(e){}
-})();
 </script></body></html>

@@ -1,0 +1,40 @@
+  if(t.dataset.r){const r={...(m.reacts||{})};if(r[me.id]===t.dataset.r)delete r[me.id];else r[me.id]=t.dataset.r;await col.doc(id).update({reacts:r});sel=null}
+  else if(t.dataset.a==='reply'){replyTo=m;$('rep').style.display='block';$('rep').textContent='Replying to '+m.name+': '+m.text.slice(0,40);sel=null;$('in').focus()}
+  else if(t.dataset.a==='del'){await col.doc(id).delete();sel=null}
+  else if(t.classList.contains('b')){sel=sel===id?null:id}
+  }catch(err){console.error(err)}
+  render();
+};
+async function send(){
+  const v=$('in').value.trim();if(!v)return;
+  $('in').value='';
+  const d={t:Date.now(),uid:me.id,name:me.name,text:v,reacts:{}};
+  if(replyTo)d.reply=replyTo.name+': '+replyTo.text.slice(0,60);
+  replyTo=null;$('rep').style.display='none';
+  try{await col.add(d)}catch(e){alert('Could not send: '+(e.code||e.message))}
+}
+$('sd').onclick=send;$('in').onkeydown=e=>{if(e.key==='Enter')send()};
+$('emo').innerHTML=['😀','😂','🥹','😍','😎','🤔','😭','🙏','👍','🔥','🎉','💯','❤️','✨','👀','🥳'].map(e=>`<span>${e}</span>`).join('');
+$('emo').onclick=e=>{if(e.target.tagName==='SPAN'){$('in').value+=e.target.textContent;$('in').focus()}};
+$('eb').onclick=()=>{const s=$('emo').style;s.display=s.display==='flex'?'none':'flex'};
+function start(){
+  $('bar').style.display='block';
+  col.orderBy('t','desc').limit(200).onSnapshot(s=>{
+    const docs=s.docs||[];
+    msgs=docs.map(d=>({id:d.id,...(typeof d.data==='function'?d.data():d.data)})).reverse();
+    render();$('list').scrollTop=$('list').scrollHeight;
+  },e=>{$('on').textContent='disconnected ('+e.code+')'});
+  $('on').textContent='live';
+}
+function gate(){
+  $('gate').innerHTML='<b style="color:var(--fg);font-size:18px">Pick a nickname</b><input id="n" maxlength="20" placeholder="Your name"><button id="go">Join chat</button>';
+  $('go').onclick=()=>{const v=$('n').value.trim();if(!v)return;me.name=v;store.set('nm',v);start()};
+}
+(async()=>{
+  try{db=await claude.use('db')}catch(e){db=null}
+  if(!db){$('on').textContent='offline';$('gate').textContent='Open this page in claude.ai (signed in, with Contributor access) to chat live.';return}
+  col=db.collection('messages');
+  me.name?start():gate();
+  try{const room=await claude.use('room');if(room){room.presence({name:me.name||'guest'});room.onPeers(p=>{const n=Object.keys(p||{}).length;if(n)$('on').textContent=n+' online'})}}catch(e){}
+})();
+</script></body></html>
